@@ -1,0 +1,3 @@
+rootProject.name = 'dying-dark'
+include 'core'
+include 'lwjgl3'

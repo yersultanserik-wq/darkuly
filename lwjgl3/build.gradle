@@ -1,0 +1,25 @@
+apply plugin: 'application'
+
+dependencies {
+    implementation project(':core')
+    api "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+    api "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+}
+
+mainClassName = 'com.dyingdark.Lwjgl3Launcher'
+application.setMainClass(mainClassName)
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': mainClassName
+    }
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    archiveFileName = 'dying-dark.jar'
+}
+
+run {
+    ignoreExitValue = true
+    workingDir = rootProject.file('assets').absolutePath
+    standardInput = System.in
+}
