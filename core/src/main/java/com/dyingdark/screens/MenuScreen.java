@@ -82,7 +82,7 @@ public class MenuScreen implements Screen {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) ||
             Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            game.setScreen(new GameScreen(game));
+            game.setScreen(new RaceSelectScreen(game));
             dispose();
         }
     }
