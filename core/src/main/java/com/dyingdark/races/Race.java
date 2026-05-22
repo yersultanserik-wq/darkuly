@@ -1,11 +1,11 @@
 package com.dyingdark.races;
 
 public enum Race {
-    HUMAN   ("Human",    150, 35, 10, 120f, "Сбалансированный. Умеренный во всём."),
-    ELF     ("Elf",      110, 30,  6, 170f, "Быстрый и ловкий, но хрупкий."),
-    ORC     ("Orc",      220, 55, 18,  90f, "Медленный гигант с огромным уроном."),
-    NECRO   ("Necromancer", 90, 60,  4, 130f, "Хрупкий маг с мощной магией."),
-    DWARF   ("Dwarf",    180, 38, 14, 135f, "Крепкий и немного быстрее человека.");
+    HUMAN   ("Human",    150, 35, 10, 120f, "Balanced. Moderate in everything."),
+    ELF     ("Elf",      110, 30,  6, 170f, "Fast and agile, but fragile."),
+    ORC     ("Orc",      220, 55, 18,  90f, "Slow giant with massive damage."),
+    NECRO   ("Necromancer", 90, 60,  4, 130f, "Fragile mage with powerful magic."),
+    DWARF   ("Dwarf",    180, 38, 14, 135f, "Sturdy and slightly faster than human.");
 
     public final String displayName;
     public final int    baseHp;

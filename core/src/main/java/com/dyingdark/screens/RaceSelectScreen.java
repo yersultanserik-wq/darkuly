@@ -84,8 +84,8 @@ public class RaceSelectScreen implements Screen {
         game.batch.begin();
         Color c = RACE_COLORS[selected];
         titleFont.setColor(c.r, c.g, c.b, 0.9f);
-        layout.setText(titleFont, "ВЫБОР РАСЫ");
-        titleFont.draw(game.batch, "ВЫБОР РАСЫ", W / 2f - layout.width / 2f, H - 30);
+        layout.setText(titleFont, "CHOOSE RACE");
+        titleFont.draw(game.batch, "CHOOSE RACE", W / 2f - layout.width / 2f, H - 30);
         game.batch.end();
     }
 
@@ -121,35 +121,11 @@ public class RaceSelectScreen implements Screen {
             // Race figure (stylized shape per race)
             drawRaceFigure(r, nc, cx + cardW / 2f, cardY + cardH - 60, sel);
 
-            // Name
+            // Name only — no description text
             game.batch.begin();
             font.setColor(nc.r, nc.g, nc.b, sel ? 1f : 0.55f);
             layout.setText(font, r.displayName);
-            font.draw(game.batch, r.displayName, cx + cardW / 2f - layout.width / 2f, cardY + 50);
-
-            // Description (wrap manually)
-            smallFont.setColor(0.75f, 0.75f, 0.75f, sel ? 0.95f : 0.45f);
-            String[] words = r.description.split(" ");
-            StringBuilder line = new StringBuilder();
-            float lineY = cardY + 32;
-            for (String w : words) {
-                String test = line + (line.length() > 0 ? " " : "") + w;
-                layout.setText(smallFont, test);
-                if (layout.width > cardW - 10) {
-                    if (line.length() > 0) {
-                        layout.setText(smallFont, line.toString());
-                        smallFont.draw(game.batch, line.toString(), cx + cardW/2f - layout.width/2f, lineY);
-                        lineY -= 16;
-                    }
-                    line = new StringBuilder(w);
-                } else {
-                    line = new StringBuilder(test);
-                }
-            }
-            if (line.length() > 0) {
-                layout.setText(smallFont, line.toString());
-                smallFont.draw(game.batch, line.toString(), cx + cardW/2f - layout.width/2f, lineY);
-            }
+            font.draw(game.batch, r.displayName, cx + cardW / 2f - layout.width / 2f, cardY + 42);
             game.batch.end();
         }
     }
@@ -274,8 +250,8 @@ public class RaceSelectScreen implements Screen {
     private void drawInstructions() {
         game.batch.begin();
         smallFont.setColor(0.4f, 0.4f, 0.5f, 1f);
-        layout.setText(smallFont, "← → выбор расы    ENTER = подтвердить    ESC = назад");
-        smallFont.draw(game.batch, "← → выбор расы    ENTER = подтвердить    ESC = назад",
+        layout.setText(smallFont, "LEFT/RIGHT select    ENTER = confirm    ESC = back");
+        smallFont.draw(game.batch, "LEFT/RIGHT select    ENTER = confirm    ESC = back",
                 W / 2f - layout.width / 2f, 28);
         game.batch.end();
     }

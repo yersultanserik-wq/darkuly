@@ -5,6 +5,8 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
@@ -70,6 +72,20 @@ public class GameScreen implements Screen {
     private boolean inShop = false;
     private ShopScreen shopScreen;
 
+    private boolean victoryScreen = false;
+
+    // ── Kenney Tile Textures ───────────────────────────────
+    // Player tiles by race: Human=98, Elf=112, Orc=109, Necro=84, Dwarf=87
+    // Enemy tiles: Ghost=121, Bat=120, Mage=111, Spider=122, Boss=108
+    private Texture[] floorTiles;
+    private Texture[] wallTiles;
+    private boolean tilesLoaded = false;
+
+    // Character sprites (Kenney tiles)
+    private Texture[] playerSprites; // indexed by race ordinal
+    private Texture[] enemySprites;  // 0=ghost(goblin), 1=bat(skeleton), 2=mage(archer), 3=spider(boss), 4=boss
+    private boolean spritesLoaded = false;
+
     // ── Rendering ──────────────────────────────────────────
     private final BitmapFont font;
     private final BitmapFont smallFont;
@@ -98,15 +114,69 @@ public class GameScreen implements Screen {
         this.font      = new BitmapFont(); font.getData().setScale(1.6f);
         this.smallFont = new BitmapFont(); smallFont.getData().setScale(1.2f);
 
-        events.subscribe(EventType.ENEMY_DIED,        (t, d) -> { goldRef[0] += 10; log("+10g  Враг повержен!"); save.addGold(10); });
-        events.subscribe(EventType.PLAYER_DAMAGED,    (t, d) -> { hitFlash = 0.25f; log("Урон: -" + d); });
-        events.subscribe(EventType.PLAYER_HEALED,     (t, d) -> log("Лечение +" + d + " HP"));
-        events.subscribe(EventType.ARTIFACT_COLLECTED,(t, d) -> { save.saveArtifact((String)d); log("Артефакт: " + d); });
-        events.subscribe(EventType.SCROLL_USED,       (t, d) -> { save.saveScroll((String)d); log("Использован: " + d); });
-        events.subscribe(EventType.LEVEL_CLEARED,     (t, d) -> log("Этаж " + depth + " пройден!"));
+        events.subscribe(EventType.ENEMY_DIED,        (t, d) -> { goldRef[0] += 10; log("+10g  Enemy defeated!"); save.addGold(10); });
+        events.subscribe(EventType.PLAYER_DAMAGED,    (t, d) -> { hitFlash = 0.25f; log("Damage: -" + d); });
+        events.subscribe(EventType.PLAYER_HEALED,     (t, d) -> log("Healed +" + d + " HP"));
+        events.subscribe(EventType.ARTIFACT_COLLECTED,(t, d) -> { save.saveArtifact((String)d); log("Artifact: " + d); });
+        events.subscribe(EventType.SCROLL_USED,       (t, d) -> { save.saveScroll((String)d); log("Used: " + d); });
+        events.subscribe(EventType.LEVEL_CLEARED,     (t, d) -> log("Floor " + depth + " cleared!"));
         events.subscribe(EventType.PLAYER_DIED,       (t, d) -> gameOver = true);
 
+        loadTiles();
         startRun();
+    }
+
+    private void loadTiles() {
+        // Floor + wall tiles — independent try/catch
+        try {
+            floorTiles = new Texture[4];
+            for (int i = 0; i < 4; i++) {
+                String path = "assets/tiles/tile_" + String.format("%04d", i) + ".png";
+                if (Gdx.files.internal(path).exists())
+                    floorTiles[i] = new Texture(Gdx.files.internal(path));
+            }
+            wallTiles = new Texture[3];
+            for (int i = 0; i < 3; i++) {
+                String path = "assets/tiles/tile_" + String.format("%04d", 20 + i) + ".png";
+                if (Gdx.files.internal(path).exists())
+                    wallTiles[i] = new Texture(Gdx.files.internal(path));
+            }
+            tilesLoaded = true;
+        } catch (Exception ex) {
+            tilesLoaded = false;
+            Gdx.app.log("GameScreen", "Floor/wall tiles failed: " + ex.getMessage());
+        }
+
+        // Character sprites — each loaded individually, no .exists() check needed
+        // new Texture() on a missing file throws — caught per-sprite so one miss doesn't kill others
+        try {
+            // Player sprites by race ordinal: Human=98, Elf=112, Orc=109, Necro=84, Dwarf=87
+            int[] playerTileNums = {98, 112, 109, 84, 87};
+            playerSprites = new Texture[playerTileNums.length];
+            for (int i = 0; i < playerTileNums.length; i++) {
+                try {
+                    playerSprites[i] = new Texture(Gdx.files.internal(
+                        "assets/tiles/tile_" + String.format("%04d", playerTileNums[i]) + ".png"));
+                } catch (Exception tex) {
+                    Gdx.app.log("GameScreen", "player sprite " + playerTileNums[i] + " failed");
+                }
+            }
+            // Enemy sprites: Ghost(GOBLIN)=121, Bat(SKELETON)=120, Mage(ARCHER)=111, Spider=122, Boss=108
+            int[] enemyTileNums = {121, 120, 111, 122, 108};
+            enemySprites = new Texture[enemyTileNums.length];
+            for (int i = 0; i < enemyTileNums.length; i++) {
+                try {
+                    enemySprites[i] = new Texture(Gdx.files.internal(
+                        "assets/tiles/tile_" + String.format("%04d", enemyTileNums[i]) + ".png"));
+                } catch (Exception tex) {
+                    Gdx.app.log("GameScreen", "enemy sprite " + enemyTileNums[i] + " failed");
+                }
+            }
+            spritesLoaded = true;
+        } catch (Exception ex) {
+            spritesLoaded = false;
+            Gdx.app.log("GameScreen", "Sprite init failed: " + ex.getMessage());
+        }
     }
 
     private void startRun() {
@@ -116,7 +186,7 @@ public class GameScreen implements Screen {
         rooms = new DungeonGenerator().generate(depth, diff);
         currentRoomIdx = 0;
         save.incrementRuns();
-        log("Dying Dark — Этаж " + depth + " | " + race.displayName);
+        log("Dying Dark — Floor " + (depth + 1) + "/5 | " + race.displayName);
     }
 
     private void applyArtifact(String art) {
@@ -136,6 +206,7 @@ public class GameScreen implements Screen {
             return;
         }
 
+        if (victoryScreen) { renderVictory(); handleVictoryInput(); return; }
         if (gameOver) { renderGameOver(); handleGameOverInput(); return; }
 
         update(delta);
@@ -175,9 +246,14 @@ public class GameScreen implements Screen {
                 currentRoomIdx++;
                 if (currentRoomIdx >= rooms.size()) {
                     depth++;
+                    // Victory after completing floor 5 (depth was 0-indexed, so depth==5 means floor 5 done)
+                    if (depth >= DungeonGenerator.MAX_DEPTH) {
+                        victoryScreen = true;
+                        return;
+                    }
                     rooms = new DungeonGenerator().generate(depth, config.getDifficultyMultiplier());
                     currentRoomIdx = 0;
-                    log("Спуск на этаж " + depth + "!");
+                    log("Descending to floor " + (depth + 1) + "!");
                     // Open shop every 2 floors
                     if (depth % 2 == 0) openShop();
                 }
@@ -214,7 +290,7 @@ public class GameScreen implements Screen {
         shopScreen = new ShopScreen(game, player, goldRef, () -> {
             inShop = false;
             shopScreen = null;
-            log("Магазин закрыт. Вперёд!");
+            log("Shop closed. Onward!");
         });
     }
 
@@ -241,11 +317,11 @@ public class GameScreen implements Screen {
                 hit = true;
             }
         }
-        if (!hit) log("Мимо!");
+        if (!hit) log("Miss!");
     }
 
     private void useHealPotion() {
-        if (healPotions <= 0) { log("Нет зелий лечения!"); return; }
+        if (healPotions <= 0) { log("No heal potions!"); return; }
         healPotions--;
         int amount = ConsumableType.HEAL_POTION.healAmount;
         player.heal(amount);
@@ -254,26 +330,26 @@ public class GameScreen implements Screen {
     }
 
     private void useManaPotion() {
-        if (manaPotions <= 0) { log("Нет зелий маны!"); return; }
+        if (manaPotions <= 0) { log("No mana potions!"); return; }
         manaPotions--;
         player.restoreMana(60);
-        log("Мана +60!");
+        log("Mana +60!");
         events.publish(EventType.SCROLL_USED, "ManaPotion");
     }
 
     private void useShieldScroll() {
-        if (shieldScrolls <= 0) { log("Нет свитков щита!"); return; }
+        if (shieldScrolls <= 0) { log("No shield scrolls!"); return; }
         shieldScrolls--;
         shieldTimer = 5f;
         events.publish(EventType.SCROLL_USED, "ShieldScroll");
-        log("Щит активен 5с!");
+        log("Shield active 5s!");
     }
 
     private void collectRoomLoot(Room room) {
         for (String loot : room.getLoot()) {
             switch (loot) {
-                case "HealScroll"    -> { healPotions++;  log("Найдено: Зелье лечения!"); }
-                case "ShieldScroll"  -> { shieldScrolls++; log("Найдено: Свиток щита!"); }
+                case "HealScroll"    -> { healPotions++;  log("Found: Heal Potion!"); }
+                case "ShieldScroll"  -> { shieldScrolls++; log("Found: Shield Scroll!"); }
                 case "ArtifactChest" -> collectRandomArtifact();
             }
         }
@@ -301,45 +377,335 @@ public class GameScreen implements Screen {
         drawRoomClearBanner();
     }
 
-    // ── FLOOR: dark checkerboard with subtle neon grid ─────
+    // ── FLOOR: use Kenney tiles if loaded, else fallback ──
     private void drawFloor() {
+        if (tilesLoaded && floorTiles[0] != null) {
+            drawFloorWithTiles();
+        } else {
+            drawFloorFallback();
+        }
+    }
+
+    private void drawFloorWithTiles() {
+        float floorY = HUD_H;
+        game.batch.begin();
+        for (int tx = 0; tx < (int)(W / TILE); tx++) {
+            for (int ty = (int)(floorY / TILE); ty < (int)(H / TILE); ty++) {
+                int tileIdx = ((tx * 7 + ty * 13) % floorTiles.length);
+                Texture t = floorTiles[tileIdx];
+                if (t != null) {
+                    game.batch.setColor(0.9f, 0.9f, 0.9f, 1f);
+                    game.batch.draw(t, tx * TILE, ty * TILE, TILE, TILE);
+                }
+            }
+        }
+        game.batch.setColor(Color.WHITE);
+        game.batch.end();
+
+        // Subtle neon glow pools on top
         Color pc = RACE_NEON[race.ordinal()];
+        float flicker = 0.6f + 0.4f * (float)Math.sin(time * 2.3f);
+        float[][] glowCenters = {
+            {TILE + 16, floorY + 16}, {W - TILE - 16, floorY + 16},
+            {TILE + 16, H - TILE - 16}, {W - TILE - 16, H - TILE - 16}, {W/2f, H/2f},
+        };
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-        for (int tx = 0; tx < W / TILE; tx++) {
-            for (int ty = (int)(HUD_H/TILE); ty < H / TILE; ty++) {
-                boolean dark = (tx + ty) % 2 == 0;
-                game.shapes.setColor(dark ? 0.07f : 0.09f, dark ? 0.07f : 0.09f, dark ? 0.12f : 0.15f, 1f);
-                game.shapes.rect(tx * TILE, ty * TILE, TILE, TILE);
+        for (int gi = 0; gi < glowCenters.length; gi++) {
+            float glowX = glowCenters[gi][0], glowY = glowCenters[gi][1];
+            boolean isCenter = gi == 4;
+            float r2 = isCenter ? pc.r * 0.04f : 0.35f * flicker;
+            float g2 = isCenter ? pc.g * 0.04f : 0.22f * flicker;
+            float b2 = isCenter ? pc.b * 0.04f : 0.05f * flicker;
+            for (int layer = 6; layer >= 1; layer--) {
+                float rad = layer * (isCenter ? 60f : 45f);
+                float intensity = (7f - layer) / 7f * 0.4f;
+                game.shapes.setColor(r2 * intensity, g2 * intensity, b2 * intensity, 1f);
+                game.shapes.rect(glowX - rad, glowY - rad, rad*2, rad*2);
+            }
+        }
+        game.shapes.end();
+    }
+
+    private void drawFloorFallback() {
+        Color pc = RACE_NEON[race.ordinal()];
+        float floorY = HUD_H;
+        float floorH = H - floorY;
+
+        // === BASE STONE FLOOR — alternating large stone slabs ===
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        for (int tx = 0; tx < (int)(W / TILE); tx++) {
+            for (int ty = (int)(floorY / TILE); ty < (int)(H / TILE); ty++) {
+                // Varied stone colors — 4 types based on position hash
+                int hash = (tx * 7 + ty * 13) % 8;
+                float r, g, b;
+                switch (hash) {
+                    case 0 -> { r=0.14f; g=0.11f; b=0.10f; } // warm dark stone
+                    case 1 -> { r=0.12f; g=0.10f; b=0.12f; } // cold stone
+                    case 2 -> { r=0.10f; g=0.10f; b=0.15f; } // blueish
+                    case 3 -> { r=0.16f; g=0.12f; b=0.09f; } // brownish
+                    default -> { r=0.11f; g=0.10f; b=0.11f; }
+                }
+                game.shapes.setColor(r, g, b, 1f);
+                game.shapes.rect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
             }
         }
         game.shapes.end();
 
-        // Neon grid lines (very subtle)
+        // === MORTAR LINES between stone tiles ===
         game.shapes.begin(ShapeRenderer.ShapeType.Line);
-        game.shapes.setColor(pc.r * 0.07f, pc.g * 0.07f, pc.b * 0.07f, 1f);
-        for (int tx = 0; tx <= W / TILE; tx++) game.shapes.line(tx*TILE, HUD_H, tx*TILE, H);
-        for (int ty = (int)(HUD_H/TILE); ty <= H/TILE; ty++) game.shapes.line(0, ty*TILE, W, ty*TILE);
+        game.shapes.setColor(0.06f, 0.05f, 0.05f, 1f);
+        for (int tx = 0; tx <= (int)(W / TILE); tx++)
+            game.shapes.line(tx*TILE, floorY, tx*TILE, H);
+        for (int ty = (int)(floorY/TILE); ty <= (int)(H/TILE); ty++)
+            game.shapes.line(0, ty*TILE, W, ty*TILE);
+        game.shapes.end();
+
+        // === CRACK DETAILS on some tiles ===
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(0.07f, 0.06f, 0.06f, 1f);
+        // Deterministic cracks based on tile pos
+        for (int tx = 1; tx < (int)(W/TILE)-1; tx++) {
+            for (int ty = (int)(floorY/TILE)+1; ty < (int)(H/TILE)-1; ty++) {
+                int hash = (tx * 31 + ty * 17) % 11;
+                float bx = tx * TILE, by = ty * TILE;
+                if (hash == 0) {
+                    game.shapes.line(bx+8, by+6, bx+20, by+18);
+                    game.shapes.line(bx+20, by+18, bx+24, by+26);
+                } else if (hash == 1) {
+                    game.shapes.line(bx+4, by+20, bx+18, by+14);
+                } else if (hash == 2) {
+                    game.shapes.line(bx+14, by+4, bx+10, by+22);
+                    game.shapes.line(bx+10, by+22, bx+20, by+28);
+                }
+            }
+        }
+        game.shapes.end();
+
+        // === STONE RUBBLE / DEBRIS (small filled rects) ===
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        int[][] rubblePositions = {
+            {96, (int)floorY+60}, {176, (int)floorY+130}, {800, (int)floorY+80},
+            {720, (int)floorY+200}, {400, (int)floorY+50}, {560, (int)floorY+330},
+            {130, (int)H-120}, {860, (int)H-90}, {640, (int)H-140},
+        };
+        for (int[] rp : rubblePositions) {
+            game.shapes.setColor(0.18f, 0.14f, 0.12f, 1f);
+            game.shapes.rect(rp[0], rp[1], 8, 5);
+            game.shapes.rect(rp[0]+12, rp[1]+3, 5, 4);
+            game.shapes.rect(rp[0]+5, rp[1]-4, 6, 3);
+            game.shapes.setColor(0.12f, 0.10f, 0.09f, 1f);
+            game.shapes.rect(rp[0]+2, rp[1]+2, 4, 3);
+        }
+        game.shapes.end();
+
+        // === SUBTLE NEON GLOW POOLS (torchlight simulation) ===
+        float[][] glowCenters = {
+            {TILE + 16, floorY + 16},          // top-left torch
+            {W - TILE - 16, floorY + 16},       // top-right
+            {TILE + 16, H - TILE - 16},          // bottom-left
+            {W - TILE - 16, H - TILE - 16},      // bottom-right
+            {W/2f, H/2f},                         // center subtle
+        };
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        float flicker = 0.6f + 0.4f * (float)Math.sin(time * 2.3f);
+        for (int gi = 0; gi < glowCenters.length; gi++) {
+            float glowX = glowCenters[gi][0], glowY = glowCenters[gi][1];
+            boolean isCenter = gi == 4;
+            float r2 = isCenter ? pc.r * 0.04f : 0.35f * flicker;
+            float g2 = isCenter ? pc.g * 0.04f : 0.22f * flicker;
+            float b2 = isCenter ? pc.b * 0.04f : 0.05f * flicker;
+            // Multi-layer radial glow (concentric rects approximation)
+            for (int layer = 6; layer >= 1; layer--) {
+                float rad = layer * (isCenter ? 60f : 45f);
+                float intensity = (7f - layer) / 7f * 0.6f;
+                game.shapes.setColor(r2 * intensity, g2 * intensity, b2 * intensity, 1f);
+                game.shapes.rect(glowX - rad, glowY - rad, rad*2, rad*2);
+            }
+        }
         game.shapes.end();
     }
 
     private void drawWalls() {
         Color pc = RACE_NEON[race.ordinal()];
+        float flicker = 0.55f + 0.15f*(float)Math.sin(time * 1.8f);
+
+        // === WALL TILES — use Kenney assets if loaded ===
+        if (tilesLoaded && wallTiles[0] != null) {
+            game.batch.begin();
+            game.batch.setColor(0.85f, 0.85f, 0.85f, 1f);
+            Texture wt = wallTiles[0];
+            // Top wall
+            for (int tx = 0; tx < (int)(W/TILE); tx++) game.batch.draw(wt, tx*TILE, H-TILE, TILE, TILE);
+            // Bottom wall
+            for (int tx = 0; tx < (int)(W/TILE); tx++) game.batch.draw(wt, tx*TILE, HUD_H, TILE, TILE);
+            // Left/right walls
+            Texture wt2 = wallTiles.length > 1 && wallTiles[1] != null ? wallTiles[1] : wt;
+            for (int ty = (int)(HUD_H/TILE)+1; ty < (int)(H/TILE)-1; ty++) {
+                game.batch.draw(wt2, 0, ty*TILE, TILE, TILE);
+                game.batch.draw(wt2, W-TILE, ty*TILE, TILE, TILE);
+            }
+            game.batch.setColor(Color.WHITE);
+            game.batch.end();
+
+            // Still draw corners, torches and neon over tiles
+            drawPillar(TILE, HUD_H + TILE, pc, flicker);
+            drawPillar(W - 2*TILE, HUD_H + TILE, pc, flicker);
+            drawPillar(TILE, H - 2*TILE, pc, flicker);
+            drawPillar(W - 2*TILE, H - 2*TILE, pc, flicker);
+            drawTorch(TILE + 16, H - TILE - 12, flicker);
+            drawTorch(W - TILE - 16, H - TILE - 12, flicker);
+            drawTorch(TILE + 16, HUD_H + TILE + 12, flicker);
+            drawTorch(W - TILE - 16, HUD_H + TILE + 12, flicker);
+            game.shapes.begin(ShapeRenderer.ShapeType.Line);
+            game.shapes.setColor(pc.r*flicker*0.5f, pc.g*flicker*0.5f, pc.b*flicker*0.5f, 1f);
+            game.shapes.rect(TILE, HUD_H + TILE, W - 2*TILE, H - HUD_H - 2*TILE);
+            game.shapes.end();
+            drawWallRunes(pc, flicker);
+            return;
+        }
+
+        // === WALL STONE BLOCKS (fallback) ===
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-        game.shapes.setColor(0.1f, 0.08f, 0.08f, 1f);
-        game.shapes.rect(0, H - TILE, W, TILE);
-        game.shapes.rect(0, HUD_H, W, TILE);
-        game.shapes.rect(0, HUD_H, TILE, H - HUD_H);
-        game.shapes.rect(W - TILE, HUD_H, TILE, H - HUD_H);
+
+        // Top wall row
+        for (int tx = 0; tx < (int)(W/TILE); tx++) {
+            int hash = (tx * 11 + 3) % 5;
+            float base = 0.12f + hash * 0.015f;
+            game.shapes.setColor(base, base * 0.8f, base * 0.7f, 1f);
+            game.shapes.rect(tx * TILE + 1, H - TILE + 1, TILE - 2, TILE - 2);
+            // Horizontal brick line in middle of tile
+            game.shapes.setColor(base * 0.6f, base * 0.5f, base * 0.4f, 1f);
+            game.shapes.rect(tx * TILE + 2, H - TILE + TILE/2f, TILE - 4, 2);
+        }
+        // Bottom wall row (above HUD)
+        for (int tx = 0; tx < (int)(W/TILE); tx++) {
+            int hash = (tx * 7 + 5) % 5;
+            float base = 0.12f + hash * 0.015f;
+            game.shapes.setColor(base, base * 0.8f, base * 0.7f, 1f);
+            game.shapes.rect(tx * TILE + 1, HUD_H + 1, TILE - 2, TILE - 2);
+            game.shapes.setColor(base * 0.6f, base * 0.5f, base * 0.4f, 1f);
+            game.shapes.rect(tx * TILE + 2, HUD_H + TILE/2f, TILE - 4, 2);
+        }
+        // Left wall column
+        for (int ty = (int)(HUD_H/TILE)+1; ty < (int)(H/TILE)-1; ty++) {
+            int hash = (ty * 13 + 1) % 5;
+            float base = 0.11f + hash * 0.015f;
+            game.shapes.setColor(base, base * 0.8f, base * 0.7f, 1f);
+            game.shapes.rect(1, ty * TILE + 1, TILE - 2, TILE - 2);
+            game.shapes.setColor(base * 0.6f, base * 0.5f, base * 0.4f, 1f);
+            game.shapes.rect(2, ty * TILE + TILE/2f, TILE/2f, 2);
+        }
+        // Right wall column
+        for (int ty = (int)(HUD_H/TILE)+1; ty < (int)(H/TILE)-1; ty++) {
+            int hash = (ty * 9 + 7) % 5;
+            float base = 0.11f + hash * 0.015f;
+            game.shapes.setColor(base, base * 0.8f, base * 0.7f, 1f);
+            game.shapes.rect(W - TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
+            game.shapes.setColor(base * 0.6f, base * 0.5f, base * 0.4f, 1f);
+            game.shapes.rect(W - TILE + 2, ty * TILE + TILE/2f, TILE/2f, 2);
+        }
         game.shapes.end();
 
-        // Neon wall outline
-        float glow = 0.4f + 0.15f*(float)Math.sin(time*1.5f);
+        // === WALL SHADOW (inner darkening near walls) ===
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        for (int d = 0; d < 4; d++) {
+            float alpha = (4f - d) * 0.04f;
+            game.shapes.setColor(0f, 0f, 0f, alpha);
+            game.shapes.rect(TILE + d, HUD_H + TILE + d, W - 2*TILE - 2*d, H - HUD_H - 2*TILE - 2*d);
+        }
+        game.shapes.end();
+
+        // === CORNER PILLARS ===
+        drawPillar(TILE, HUD_H + TILE, pc, flicker);
+        drawPillar(W - 2*TILE, HUD_H + TILE, pc, flicker);
+        drawPillar(TILE, H - 2*TILE, pc, flicker);
+        drawPillar(W - 2*TILE, H - 2*TILE, pc, flicker);
+
+        // === WALL TORCHES ===
+        drawTorch(TILE + 16, H - TILE - 12, flicker);
+        drawTorch(W - TILE - 16, H - TILE - 12, flicker);
+        drawTorch(TILE + 16, HUD_H + TILE + 12, flicker);
+        drawTorch(W - TILE - 16, HUD_H + TILE + 12, flicker);
+
+        // === NEON BORDER OUTLINE (inner glow) ===
         game.shapes.begin(ShapeRenderer.ShapeType.Line);
-        game.shapes.setColor(pc.r*glow, pc.g*glow, pc.b*glow, 1f);
+        game.shapes.setColor(pc.r*flicker*0.5f, pc.g*flicker*0.5f, pc.b*flicker*0.5f, 1f);
         game.shapes.rect(TILE, HUD_H + TILE, W - 2*TILE, H - HUD_H - 2*TILE);
-        // Double glow border
-        game.shapes.setColor(pc.r*glow*0.4f, pc.g*glow*0.4f, pc.b*glow*0.4f, 1f);
-        game.shapes.rect(TILE+2, HUD_H+TILE+2, W-2*TILE-4, H-HUD_H-2*TILE-4);
+        game.shapes.setColor(pc.r*flicker*0.2f, pc.g*flicker*0.2f, pc.b*flicker*0.2f, 1f);
+        game.shapes.rect(TILE + 2, HUD_H + TILE + 2, W - 2*TILE - 4, H - HUD_H - 2*TILE - 4);
+        game.shapes.end();
+
+        // === WALL RUNE CARVINGS ===
+        drawWallRunes(pc, flicker);
+    }
+
+    private void drawPillar(float px, float py, Color pc, float flicker) {
+        float pw = TILE, ph = TILE;
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        // Stone base
+        game.shapes.setColor(0.18f, 0.14f, 0.12f, 1f);
+        game.shapes.rect(px, py, pw, ph);
+        // Dark inner
+        game.shapes.setColor(0.10f, 0.08f, 0.07f, 1f);
+        game.shapes.rect(px + 4, py + 4, pw - 8, ph - 8);
+        // Highlight edge
+        game.shapes.setColor(0.25f, 0.20f, 0.17f, 1f);
+        game.shapes.rect(px, py + ph - 3, pw, 3); // top
+        game.shapes.rect(px, py, 3, ph);           // left
+        game.shapes.end();
+        // Glow
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(pc.r * flicker * 0.4f, pc.g * flicker * 0.4f, pc.b * flicker * 0.4f, 1f);
+        game.shapes.rect(px, py, pw, ph);
+        game.shapes.end();
+    }
+
+    private void drawTorch(float tx, float ty, float flicker) {
+        // Torch bracket
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        game.shapes.setColor(0.25f, 0.18f, 0.1f, 1f);
+        game.shapes.rect(tx - 3, ty - 14, 6, 14);
+        // Torch head
+        game.shapes.setColor(0.35f, 0.22f, 0.1f, 1f);
+        game.shapes.rect(tx - 4, ty - 16, 8, 4);
+        // Flame (outer)
+        float fl = flicker;
+        game.shapes.setColor(1f, 0.55f * fl, 0.05f, 1f);
+        game.shapes.triangle(tx - 6, ty - 14, tx + 6, ty - 14, tx, ty - 14 + 18*fl);
+        // Flame (inner bright)
+        game.shapes.setColor(1f, 0.9f, 0.3f * fl, 1f);
+        game.shapes.triangle(tx - 3, ty - 14, tx + 3, ty - 14, tx, ty - 14 + 10*fl);
+        // Spark glow
+        game.shapes.setColor(1f, 0.8f, 0.2f, fl * 0.7f);
+        game.shapes.circle(tx, ty - 10, 8 * fl, 10);
+        game.shapes.end();
+        // Light halo rings
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(1f, 0.6f, 0.1f, fl * 0.15f);
+        game.shapes.circle(tx, ty - 10, 22 * fl, 14);
+        game.shapes.setColor(1f, 0.5f, 0.1f, fl * 0.08f);
+        game.shapes.circle(tx, ty - 10, 36 * fl, 16);
+        game.shapes.end();
+    }
+
+    private void drawWallRunes(Color pc, float flicker) {
+        // Small glowing rune carvings on walls
+        float[][] runeSpots = {
+            {W/2f, H - TILE + 4},
+            {W/2f, HUD_H + TILE - 4},
+            {TILE - 2, H/2f},
+            {W - TILE + 2, H/2f},
+        };
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(pc.r * flicker * 0.6f, pc.g * flicker * 0.6f, pc.b * flicker * 0.6f, 1f);
+        for (float[] rs : runeSpots) {
+            float rx = rs[0], ry = rs[1];
+            // Simple rune glyph — lines forming a stylized symbol
+            game.shapes.line(rx-8, ry, rx+8, ry);
+            game.shapes.line(rx, ry-8, rx, ry+8);
+            game.shapes.line(rx-5, ry-5, rx+5, ry+5);
+            game.shapes.circle(rx, ry, 10, 8);
+        }
         game.shapes.end();
     }
 
@@ -409,44 +775,263 @@ public class GameScreen implements Screen {
             drawHpBar(ex - (size+4)/2f, ey + size/2f + 5, size+4, 5, e.getHp(), e.getMaxHp(), c);
         }
 
-        // Enemy labels
-        game.batch.begin();
-        smallFont.setColor(1f, 1f, 1f, 0.8f);
-        for (Enemy e : currentRoom().getEnemies()) {
-            if (!e.isAlive()) continue;
-            float size = e.getType().equals("BOSS") ? 28f : 18f;
-            String label = e.getType().equals("BOSS") ? "БОСС" : e.getType().substring(0,1);
-            smallFont.draw(game.batch, label, e.getX() - 5, e.getY() + size/2f + 3);
-        }
-        game.batch.end();
+        // Enemy type labels removed — sprites now convey identity
     }
 
     private void drawNeonEnemy(Enemy e, float ex, float ey, float size, Color c, boolean boss) {
-        // Body fill (dark)
-        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-        game.shapes.setColor(c.r*0.15f, c.g*0.15f, c.b*0.15f, 1f);
-        if (boss) game.shapes.circle(ex, ey, size, 20);
-        else      game.shapes.rect(ex-size/2, ey-size/2, size, size);
-        game.shapes.end();
-
-        // Neon border
         float glow = 0.6f + 0.4f*(float)Math.sin(time*3 + ex);
+        String type = e.getType();
+
+        // Try Kenney sprite first
+        // enemySprites: 0=Ghost(GOBLIN), 1=Bat(SKELETON), 2=Mage(ARCHER), 3=Spider(spare), 4=Boss(BOSS)
+        int sprIdx = switch (type) {
+            case "GOBLIN"   -> 0;
+            case "SKELETON" -> 1;
+            case "ARCHER"   -> 2;
+            case "BOSS"     -> 4;
+            default         -> -1;
+        };
+
+        Texture enemyTex = (enemySprites != null && sprIdx >= 0 && sprIdx < enemySprites.length)
+                            ? enemySprites[sprIdx] : null;
+        if (enemyTex != null) {
+            float ss = size * 2f;
+            // Neon glow behind sprite
+            game.shapes.begin(ShapeRenderer.ShapeType.Line);
+            game.shapes.setColor(c.r * glow, c.g * glow, c.b * glow, 0.8f);
+            game.shapes.rect(ex - ss/2 - 2, ey - ss/2 - 2, ss + 4, ss + 4);
+            game.shapes.end();
+
+            game.batch.begin();
+            game.batch.setColor(1f, 1f, 1f, 1f);
+            game.batch.draw(enemyTex, ex - ss/2, ey - ss/2, ss, ss);
+            game.batch.end();
+        } else {
+            // Fallback vector sprites
+            switch (type) {
+                case "GOBLIN"   -> drawGoblinSprite(ex, ey, c, glow, size);
+                case "SKELETON" -> drawSkeletonSprite(ex, ey, c, glow, size);
+                case "ARCHER"   -> drawArcherSprite(ex, ey, c, glow, size);
+                case "BOSS"     -> drawBossSprite(ex, ey, c, glow, size);
+                default -> {
+                    game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+                    game.shapes.setColor(c.r*0.15f, c.g*0.15f, c.b*0.15f, 1f);
+                    game.shapes.rect(ex-size/2, ey-size/2, size, size);
+                    game.shapes.end();
+                    game.shapes.begin(ShapeRenderer.ShapeType.Line);
+                    game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow, 1f);
+                    game.shapes.rect(ex-size/2, ey-size/2, size, size);
+                    game.shapes.end();
+                }
+            }
+        }
+    }
+
+    /** Goblin: small, hunched, big ears, green */
+    private void drawGoblinSprite(float cx, float cy, Color c, float glow, float size) {
+        float s = size / 18f; // normalise
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        // Body (hunched, darker torso)
+        game.shapes.setColor(c.r*0.5f, c.g*0.5f, c.b*0.2f, 1f);
+        game.shapes.rect(cx - 7*s, cy - 8*s, 14*s, 12*s);
+        // Head (round)
+        game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow*0.5f, 1f);
+        game.shapes.circle(cx, cy + 8*s, 7*s, 12);
+        // Big pointy ears
+        game.shapes.triangle(cx - 7*s, cy + 11*s,  cx - 14*s, cy + 19*s,  cx - 5*s, cy + 14*s);
+        game.shapes.triangle(cx + 7*s, cy + 11*s,  cx + 14*s, cy + 19*s,  cx + 5*s, cy + 14*s);
+        // Eyes (red/white glow)
+        game.shapes.setColor(1f, 0.2f, 0.1f, 1f);
+        game.shapes.circle(cx - 3*s, cy + 9*s, 1.5f*s, 6);
+        game.shapes.circle(cx + 3*s, cy + 9*s, 1.5f*s, 6);
+        // Legs
+        game.shapes.setColor(c.r*0.3f, c.g*0.5f, c.b*0.2f, 1f);
+        game.shapes.rect(cx - 6*s, cy - 16*s, 5*s, 9*s);
+        game.shapes.rect(cx + 1*s, cy - 16*s, 5*s, 9*s);
+        // Weapon (small club)
+        game.shapes.setColor(0.6f, 0.4f, 0.2f, 1f);
+        game.shapes.rect(cx + 7*s, cy - 6*s, 2*s, 12*s);
+        game.shapes.circle(cx + 8*s, cy + 7*s, 3*s, 8);
+        game.shapes.end();
+        // Neon outline
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow*0.6f, 1f);
+        game.shapes.circle(cx, cy + 8*s, 7.5f*s, 12);
+        game.shapes.rect(cx - 7.5f*s, cy - 8.5f*s, 15*s, 13*s);
+        game.shapes.end();
+    }
+
+    /** Skeleton: bones, ribs, skull, white-grey */
+    private void drawSkeletonSprite(float cx, float cy, Color c, float glow, float size) {
+        float s = size / 18f;
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        // Pelvis
+        game.shapes.setColor(c.r*0.7f, c.g*0.75f, c.b*0.6f, 1f);
+        game.shapes.rect(cx - 7*s, cy - 6*s, 14*s, 4*s);
+        // Spine (single rect)
+        game.shapes.rect(cx - 1.5f*s, cy - 6*s, 3*s, 16*s);
+        // Ribs (3 pairs)
+        for (int i = 0; i < 3; i++) {
+            float ry = cy + 2*s + i*3*s;
+            game.shapes.rect(cx - 7*s, ry, 5*s, 2*s);
+            game.shapes.rect(cx + 2*s, ry, 5*s, 2*s);
+        }
+        // Skull
+        game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow, 1f);
+        game.shapes.circle(cx, cy + 14*s, 6*s, 14);
+        // Jaw (darker)
+        game.shapes.setColor(c.r*0.6f, c.g*0.65f, c.b*0.5f, 1f);
+        game.shapes.rect(cx - 4*s, cy + 8*s, 8*s, 3*s);
+        // Eye sockets (dark holes)
+        game.shapes.setColor(0.02f, 0.02f, 0.05f, 1f);
+        game.shapes.circle(cx - 2.5f*s, cy + 15*s, 1.8f*s, 8);
+        game.shapes.circle(cx + 2.5f*s, cy + 15*s, 1.8f*s, 8);
+        // Eye glow
+        game.shapes.setColor(c.r*glow, c.g*glow, 0.2f, 1f);
+        game.shapes.circle(cx - 2.5f*s, cy + 15*s, 0.9f*s, 6);
+        game.shapes.circle(cx + 2.5f*s, cy + 15*s, 0.9f*s, 6);
+        // Leg bones
+        game.shapes.setColor(c.r*0.7f, c.g*0.75f, c.b*0.6f, 1f);
+        game.shapes.rect(cx - 7*s, cy - 15*s, 3*s, 10*s);
+        game.shapes.rect(cx + 4*s, cy - 15*s, 3*s, 10*s);
+        // Arm bones
+        game.shapes.rect(cx - 10*s, cy + 2*s, 4*s, 2*s);
+        game.shapes.rect(cx + 6*s,  cy + 2*s, 4*s, 2*s);
+        // Sword
+        game.shapes.setColor(0.7f, 0.8f, 1f, 1f);
+        game.shapes.rect(cx + 9*s, cy - 10*s, 2*s, 20*s);
+        game.shapes.rect(cx + 6*s, cy + 7*s, 8*s, 2*s);
+        game.shapes.end();
+        // Outline
         game.shapes.begin(ShapeRenderer.ShapeType.Line);
         game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow, 1f);
-        if (boss) game.shapes.circle(ex, ey, size, 20);
-        else      game.shapes.rect(ex-size/2, ey-size/2, size, size);
-        // Double border
-        game.shapes.setColor(c.r*glow*0.4f, c.g*glow*0.4f, c.b*glow*0.4f, 1f);
-        if (boss) game.shapes.circle(ex, ey, size+3, 20);
-        else      game.shapes.rect(ex-size/2-2, ey-size/2-2, size+4, size+4);
+        game.shapes.circle(cx, cy + 14*s, 6.5f*s, 14);
         game.shapes.end();
+    }
 
-        // Eye glow
-        float eyeY = boss ? ey+4 : ey+3;
+    /** Archer: hooded figure with bow */
+    private void drawArcherSprite(float cx, float cy, Color c, float glow, float size) {
+        float s = size / 18f;
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-        game.shapes.setColor(c.r, c.g, c.b, 0.9f);
-        game.shapes.circle(ex-4, eyeY, 2.5f, 8);
-        game.shapes.circle(ex+4, eyeY, 2.5f, 8);
+        // Robe / body
+        game.shapes.setColor(c.r*0.4f, c.g*0.35f, 0.05f, 1f);
+        game.shapes.rect(cx - 6*s, cy - 8*s, 12*s, 14*s);
+        // Cloak flare (wider at bottom)
+        game.shapes.triangle(cx - 10*s, cy - 8*s, cx + 10*s, cy - 8*s, cx, cy - 18*s);
+        // Head / hood
+        game.shapes.setColor(c.r*0.35f, c.g*0.3f, 0.04f, 1f);
+        game.shapes.circle(cx, cy + 10*s, 7*s, 12);
+        // Hood top (darker triangle)
+        game.shapes.setColor(c.r*0.2f, c.g*0.18f, 0.02f, 1f);
+        game.shapes.triangle(cx - 7*s, cy + 13*s, cx + 7*s, cy + 13*s, cx, cy + 20*s);
+        // Face shadow / eyes
+        game.shapes.setColor(c.r*glow, c.g*glow, 0.1f, 1f);
+        game.shapes.circle(cx - 2.5f*s, cy + 10*s, 1.5f*s, 6);
+        game.shapes.circle(cx + 2.5f*s, cy + 10*s, 1.5f*s, 6);
+        // Bow (left side)
+        game.shapes.end();
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(0.6f, 0.4f, 0.15f, 1f);
+        float bx = cx - 13*s, by1 = cy + 14*s, by2 = cy - 8*s;
+        float prevX2 = bx, prevY2 = by1;
+        for (int seg = 1; seg <= 12; seg++) {
+            float t = seg / 12f;
+            float nx2 = bx + 5*s*(float)Math.sin(Math.PI*t);
+            float ny2 = by1 + (by2-by1)*t;
+            game.shapes.line(prevX2, prevY2, nx2, ny2); prevX2=nx2; prevY2=ny2;
+        }
+        // String
+        game.shapes.setColor(0.9f, 0.9f, 0.8f, 0.8f);
+        game.shapes.line(bx, by1, bx, by2);
+        // Arrow nocked
+        game.shapes.setColor(c.r*glow, c.g*glow, 0.2f, 1f);
+        game.shapes.line(bx, cy + 3*s, cx - 3*s, cy + 3*s);
+        game.shapes.end();
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        game.shapes.setColor(0.8f, 0.5f, 0.1f, 1f);
+        game.shapes.triangle(cx - 3*s, cy + 5*s, cx - 3*s, cy + 1*s, cx + 1*s, cy + 3*s);
+        game.shapes.end();
+        // Quiver on back
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        game.shapes.setColor(0.5f, 0.3f, 0.1f, 1f);
+        game.shapes.rect(cx + 7*s, cy, 3*s, 10*s);
+        for (int i = 0; i < 3; i++) {
+            game.shapes.setColor(c.r*glow, c.g*glow, 0.1f, 1f);
+            game.shapes.rect(cx + 7.5f*s + i*0.8f*s, cy + 10*s, 1.5f*s, 4*s);
+        }
+        game.shapes.end();
+    }
+
+    /** Boss: massive, horned demon with crown */
+    private void drawBossSprite(float cx, float cy, Color c, float glow, float size) {
+        float s = size / 28f;
+        float pulse = 0.7f + 0.3f*(float)Math.sin(time*5);
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        // Aura / shadow base
+        game.shapes.setColor(c.r*0.08f, c.g*0.04f, c.b*0.12f, 1f);
+        game.shapes.circle(cx, cy, 28*s, 20);
+        // Wide body
+        game.shapes.setColor(c.r*0.3f, c.g*0.08f, c.b*0.3f, 1f);
+        game.shapes.rect(cx - 18*s, cy - 16*s, 36*s, 26*s);
+        // Muscle shoulders
+        game.shapes.circle(cx - 18*s, cy + 10*s, 10*s, 12);
+        game.shapes.circle(cx + 18*s, cy + 10*s, 10*s, 12);
+        // Arms
+        game.shapes.setColor(c.r*0.25f, c.g*0.06f, c.b*0.25f, 1f);
+        game.shapes.rect(cx - 28*s, cy - 14*s, 10*s, 24*s);
+        game.shapes.rect(cx + 18*s, cy - 14*s, 10*s, 24*s);
+        // Clawed hands
+        game.shapes.setColor(0.9f, 0.1f, 0.1f, 1f);
+        float hx1 = cx - 28*s, hx2 = cx + 28*s, hy = cy - 14*s;
+        for (int cl = 0; cl < 3; cl++) {
+            game.shapes.triangle(hx1 + cl*3*s, hy, hx1 + cl*3*s + 2*s, hy, hx1 + cl*3*s + 1*s, hy - 5*s);
+            game.shapes.triangle(hx2 - cl*3*s - 2*s, hy, hx2 - cl*3*s, hy, hx2 - cl*3*s - 1*s, hy - 5*s);
+        }
+        // Legs
+        game.shapes.setColor(c.r*0.25f, c.g*0.06f, c.b*0.25f, 1f);
+        game.shapes.rect(cx - 16*s, cy - 28*s, 12*s, 14*s);
+        game.shapes.rect(cx + 4*s,  cy - 28*s, 12*s, 14*s);
+        // Hooves
+        game.shapes.setColor(0.15f, 0.1f, 0.05f, 1f);
+        game.shapes.rect(cx - 17*s, cy - 33*s, 13*s, 6*s);
+        game.shapes.rect(cx + 3*s,  cy - 33*s, 13*s, 6*s);
+        // Head
+        game.shapes.setColor(c.r*0.5f, c.g*0.1f, c.b*0.5f, 1f);
+        game.shapes.circle(cx, cy + 20*s, 14*s, 16);
+        // Horns
+        game.shapes.setColor(0.15f, 0.05f, 0.02f, 1f);
+        game.shapes.triangle(cx - 10*s, cy + 28*s, cx - 14*s, cy + 46*s, cx - 6*s, cy + 28*s);
+        game.shapes.triangle(cx + 10*s, cy + 28*s, cx + 14*s, cy + 46*s, cx + 6*s, cy + 28*s);
+        game.shapes.triangle(cx - 4*s, cy + 30*s, cx - 6*s, cy + 42*s, cx - 1*s, cy + 30*s);
+        game.shapes.triangle(cx + 4*s, cy + 30*s, cx + 6*s, cy + 42*s, cx + 1*s, cy + 30*s);
+        // Crown / glowing eye sockets
+        game.shapes.setColor(1f, 0.8f, 0.1f, 1f);
+        for (int pt = 0; pt < 5; pt++) {
+            float angle = (float)Math.PI * pt / 4f;
+            float kx = cx + 14*s*(float)Math.cos(angle);
+            float ky = cy + 26*s + 8*s*(float)Math.sin(angle);
+            game.shapes.circle(kx, ky, 1.5f*s, 6);
+        }
+        // Eyes — glowing
+        game.shapes.setColor(1f, 0.2f, 0.9f*pulse, 1f);
+        game.shapes.circle(cx - 5*s, cy + 21*s, 3*s, 10);
+        game.shapes.circle(cx + 5*s, cy + 21*s, 3*s, 10);
+        game.shapes.setColor(1f, 1f, 1f, pulse);
+        game.shapes.circle(cx - 5*s, cy + 21*s, 1.2f*s, 6);
+        game.shapes.circle(cx + 5*s, cy + 21*s, 1.2f*s, 6);
+        // Rune markings on chest
+        game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow, 0.6f);
+        for (int r2 = 0; r2 < 3; r2++) {
+            game.shapes.rect(cx - 8*s + r2*6*s, cy, 3*s, 1.5f*s);
+            game.shapes.rect(cx - 8*s + r2*6*s, cy - 5*s, 3*s, 1.5f*s);
+        }
+        game.shapes.end();
+        // Neon border
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(c.r*glow, c.g*glow, c.b*glow, 1f);
+        game.shapes.circle(cx, cy + 20*s, 14.5f*s, 16);
+        game.shapes.setColor(c.r*glow*0.5f, c.g*glow*0.3f, c.b*glow, 0.7f);
+        game.shapes.circle(cx, cy, 30*s, 24);
         game.shapes.end();
     }
 
@@ -464,29 +1049,47 @@ public class GameScreen implements Screen {
         float px = player.getX(), py = player.getY();
         Color nc = RACE_NEON[race.ordinal()];
         float glow = 0.7f + 0.3f*(float)Math.sin(time*4);
+        float spriteSize = PLAYER_SIZE * 2f;
 
-        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-
-        // Shield pulse aura
+        // Shield pulse aura (shapes)
         if (shieldTimer > 0) {
             float sAlpha = 0.15f + 0.1f*(float)Math.sin(time*6);
+            game.shapes.begin(ShapeRenderer.ShapeType.Filled);
             game.shapes.setColor(0.2f, 0.5f, 1f, sAlpha);
-            game.shapes.circle(px, py, PLAYER_SIZE + 14, 24);
+            game.shapes.circle(px, py, spriteSize + 8, 24);
+            game.shapes.end();
         }
 
-        // Body fill (dark race color)
-        Color pc = hitFlash > 0 ? new Color(1f,0.2f,0.2f,1f) : new Color(nc.r*0.2f, nc.g*0.2f, nc.b*0.2f, 1f);
-        game.shapes.setColor(pc);
-        game.shapes.circle(px, py, PLAYER_SIZE*0.9f, 16);
-        game.shapes.end();
+        // Draw Kenney sprite — check this specific sprite directly
+        int raceIdx = race.ordinal();
+        Texture playerTex = (playerSprites != null && raceIdx < playerSprites.length)
+                             ? playerSprites[raceIdx] : null;
+        if (playerTex != null) {
+            // Neon glow ring behind sprite
+            game.shapes.begin(ShapeRenderer.ShapeType.Line);
+            Color gc = hitFlash > 0 ? new Color(1f, 0.2f, 0.2f, 1f) : nc;
+            game.shapes.setColor(gc.r * glow, gc.g * glow, gc.b * glow, 1f);
+            game.shapes.rect(px - spriteSize/2 - 2, py - spriteSize/2 - 2, spriteSize + 4, spriteSize + 4);
+            game.shapes.end();
 
-        // Neon border
-        game.shapes.begin(ShapeRenderer.ShapeType.Line);
-        game.shapes.setColor(nc.r*glow, nc.g*glow, nc.b*glow, 1f);
-        game.shapes.circle(px, py, PLAYER_SIZE*0.9f, 16);
-        game.shapes.setColor(nc.r*glow*0.3f, nc.g*glow*0.3f, nc.b*glow*0.3f, 1f);
-        game.shapes.circle(px, py, PLAYER_SIZE*0.9f+3, 16);
-        game.shapes.end();
+            game.batch.begin();
+            if (hitFlash > 0) game.batch.setColor(1f, 0.4f, 0.4f, 1f);
+            else game.batch.setColor(1f, 1f, 1f, 1f);
+            game.batch.draw(playerTex, px - spriteSize/2, py - spriteSize/2, spriteSize, spriteSize);
+            game.batch.setColor(1f, 1f, 1f, 1f);
+            game.batch.end();
+        } else {
+            // Fallback vector player
+            game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+            Color pc2 = hitFlash > 0 ? new Color(1f,0.2f,0.2f,1f) : new Color(nc.r*0.2f, nc.g*0.2f, nc.b*0.2f, 1f);
+            game.shapes.setColor(pc2);
+            game.shapes.circle(px, py, PLAYER_SIZE*0.9f, 16);
+            game.shapes.end();
+            game.shapes.begin(ShapeRenderer.ShapeType.Line);
+            game.shapes.setColor(nc.r*glow, nc.g*glow, nc.b*glow, 1f);
+            game.shapes.circle(px, py, PLAYER_SIZE*0.9f, 16);
+            game.shapes.end();
+        }
 
         // Draw equipped weapon next to player
         drawEquippedWeaponOnPlayer(px, py, nc);
@@ -494,9 +1097,9 @@ public class GameScreen implements Screen {
         // Artifact indicators (small dots)
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
         int ai = 0;
-        if (hasShield)  { game.shapes.setColor(0.3f,0.7f,1f,1f); game.shapes.circle(px-PLAYER_SIZE-8-ai*12, py+PLAYER_SIZE, 4, 8); ai++; }
-        if (hasSpeed)   { game.shapes.setColor(1f,0.9f,0.1f,1f); game.shapes.circle(px-PLAYER_SIZE-8-ai*12, py+PLAYER_SIZE, 4, 8); ai++; }
-        if (hasVampire) { game.shapes.setColor(0.8f,0.1f,0.8f,1f); game.shapes.circle(px-PLAYER_SIZE-8-ai*12, py+PLAYER_SIZE, 4, 8); }
+        if (hasShield)  { game.shapes.setColor(0.3f,0.7f,1f,1f); game.shapes.circle(px-spriteSize/2-8-ai*12, py+spriteSize/2, 4, 8); ai++; }
+        if (hasSpeed)   { game.shapes.setColor(1f,0.9f,0.1f,1f); game.shapes.circle(px-spriteSize/2-8-ai*12, py+spriteSize/2, 4, 8); ai++; }
+        if (hasVampire) { game.shapes.setColor(0.8f,0.1f,0.8f,1f); game.shapes.circle(px-spriteSize/2-8-ai*12, py+spriteSize/2, 4, 8); }
         game.shapes.end();
     }
 
@@ -644,7 +1247,7 @@ public class GameScreen implements Screen {
         smallFont.setColor(0.6f, 0.6f, 0.7f, 1f);
         for (ArmorSlot s : ArmorSlot.values()) {
             ArmorItem ai = player.getArmor(s);
-            String lbl = switch(s){ case HELMET -> "Шл"; case CHESTPLATE -> "Нгд"; case LEGGINGS -> "Пнж"; };
+            String lbl = switch(s){ case HELMET -> "HLM"; case CHESTPLATE -> "CHE"; case LEGGINGS -> "LEG"; };
             if (ai != null) { smallFont.setColor(nc2.r, nc2.g, nc2.b, 1f); lbl = "T"+ai.tier; }
             else smallFont.setColor(0.35f, 0.35f, 0.4f, 1f);
             smallFont.draw(game.batch, lbl, alx, 50);
@@ -653,18 +1256,18 @@ public class GameScreen implements Screen {
 
         // Consumable labels
         smallFont.setColor(0.6f, 0.6f, 0.7f, 1f);
-        smallFont.draw(game.batch, "Q=Зелье(" + healPotions + ")  E=Щит(" + shieldScrolls + ")  R=Мана(" + manaPotions + ")  TAB=Магазин", 220, 16);
+        smallFont.draw(game.batch, "Q=Heal(" + healPotions + ")  E=Shield(" + shieldScrolls + ")  R=Mana(" + manaPotions + ")  TAB=Shop", 220, 16);
 
         font.setColor(1f, 0.85f, 0.2f, 1f);
-        font.draw(game.batch, "Этаж " + depth + "  Золото " + goldRef[0], W-240, 50);
+        font.draw(game.batch, "Floor " + (depth + 1) + "/5  Gold " + goldRef[0], W-260, 50);
 
         if (shieldTimer > 0) {
             smallFont.setColor(0.4f, 0.8f, 1f, 1f);
-            smallFont.draw(game.batch, "ЩИТ " + (int)(shieldTimer+1) + "с", W/2f-30, 50);
+            smallFont.draw(game.batch, "SHIELD " + (int)(shieldTimer+1) + "s", W/2f-30, 50);
         }
 
         smallFont.setColor(0.35f, 0.35f, 0.45f, 1f);
-        smallFont.draw(game.batch, "WASD=Движение  SPACE=Атака", 10, H - 48);
+        smallFont.draw(game.batch, "WASD=Move  SPACE=Attack", 10, H - 48);
 
         if (logTimer > 0) {
             float alpha = Math.min(1f, logTimer);
@@ -677,20 +1280,79 @@ public class GameScreen implements Screen {
 
     private void drawRoomClearBanner() {
         if (!roomClear) return;
-        float bw = 340, bh = 52;
+        int nextRoom = currentRoomIdx + 1;
+        boolean isLastRoom = nextRoom >= rooms.size();
+        String line1 = isLastRoom ? "FLOOR CLEARED!" : "ROOM CLEARED!";
+        String line2 = isLastRoom ? "Descending deeper..." : "Room " + nextRoom + " / " + rooms.size() + " — advancing...";
+
+        float bw = 380, bh = 70;
+        float glow = 0.6f + 0.4f*(float)Math.sin(time*6);
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-        game.shapes.setColor(0f, 0.3f, 0f, 0.7f);
+        game.shapes.setColor(0f, 0.18f, 0.05f, 0.85f);
         game.shapes.rect(W/2f-bw/2, H/2f-bh/2, bw, bh);
         game.shapes.end();
         game.shapes.begin(ShapeRenderer.ShapeType.Line);
-        game.shapes.setColor(0.2f, 1f, 0.3f, 0.8f);
+        game.shapes.setColor(0.2f*glow, 1f*glow, 0.3f*glow, 1f);
         game.shapes.rect(W/2f-bw/2, H/2f-bh/2, bw, bh);
+        game.shapes.setColor(0.1f, 0.5f, 0.15f, 0.5f);
+        game.shapes.rect(W/2f-bw/2+3, H/2f-bh/2+3, bw-6, bh-6);
         game.shapes.end();
         game.batch.begin();
         font.setColor(0.3f, 1f, 0.3f, 1f);
-        layout.setText(font, "КОМНАТА ЗАЧИЩЕНА!");
-        font.draw(game.batch, "КОМНАТА ЗАЧИЩЕНА!", W/2f - layout.width/2f, H/2f + 18);
+        layout.setText(font, line1);
+        font.draw(game.batch, line1, W/2f - layout.width/2f, H/2f + 22);
+        smallFont.setColor(0.6f, 0.9f, 0.6f, 0.85f);
+        layout.setText(smallFont, line2);
+        smallFont.draw(game.batch, line2, W/2f - layout.width/2f, H/2f - 8);
         game.batch.end();
+    }
+
+    private void renderVictory() {
+        Gdx.gl.glClearColor(0.02f, 0.06f, 0.02f, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        float glow = 0.7f + 0.3f*(float)Math.sin(time * 4);
+
+        // Golden radial glow
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        for (int layer = 8; layer >= 1; layer--) {
+            float rad = layer * 55f;
+            float intensity = (9f - layer) / 9f * 0.12f * glow;
+            game.shapes.setColor(intensity * 1f, intensity * 0.85f, 0f, 1f);
+            game.shapes.circle(W/2f, H/2f, rad, 32);
+        }
+        game.shapes.end();
+
+        game.batch.begin();
+        font.getData().setScale(4f);
+        font.setColor(1f, 0.9f, 0.1f, glow);
+        layout.setText(font, "VICTORY!");
+        font.draw(game.batch, "VICTORY!", W/2f - layout.width/2f, H/2f + 100);
+        font.getData().setScale(1.6f);
+
+        font.setColor(0.3f, 1f, 0.4f, 1f);
+        layout.setText(font, "You conquered all 5 floors!");
+        font.draw(game.batch, layout.toString(), W/2f - layout.width/2f, H/2f + 20);
+
+        smallFont.setColor(0.8f, 0.8f, 0.5f, 1f);
+        layout.setText(smallFont, "Gold collected: " + goldRef[0] + "   Race: " + race.displayName);
+        smallFont.draw(game.batch, layout.toString(), W/2f - layout.width/2f, H/2f - 30);
+
+        smallFont.setColor(0.6f, 0.6f, 0.6f, 1f);
+        layout.setText(smallFont, "ENTER = Play Again    ESC = Main Menu");
+        smallFont.draw(game.batch, layout.toString(), W/2f - layout.width/2f, H/2f - 80);
+        game.batch.end();
+    }
+
+    private void handleVictoryInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
+            game.setScreen(new RaceSelectScreen(game));
+            dispose();
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            game.setScreen(new MenuScreen(game));
+            dispose();
+        }
     }
 
     private void renderGameOver() {
@@ -707,15 +1369,15 @@ public class GameScreen implements Screen {
         game.batch.begin();
         font.getData().setScale(4f);
         font.setColor(0.9f, 0.1f, 0.1f, 1f);
-        layout.setText(font, "ВЫ МЕРТВЫ");
-        font.draw(game.batch, "ВЫ МЕРТВЫ", W/2f-layout.width/2f+t, H/2f+80);
+        layout.setText(font, "YOU DIED");
+        font.draw(game.batch, "YOU DIED", W/2f-layout.width/2f+t, H/2f+80);
         font.getData().setScale(1.6f);
 
         smallFont.setColor(0.65f, 0.65f, 0.65f, 1f);
-        layout.setText(smallFont, "Этаж " + depth + "   Золото " + goldRef[0] + "   " + race.displayName);
+        layout.setText(smallFont, "Floor " + depth + "   Gold " + goldRef[0] + "   " + race.displayName);
         smallFont.draw(game.batch, layout.toString(), W/2f-layout.width/2f, H/2f);
 
-        layout.setText(smallFont, "ENTER = Сначала    ESC = Меню");
+        layout.setText(smallFont, "ENTER = Restart    ESC = Menu");
         smallFont.draw(game.batch, layout.toString(), W/2f-layout.width/2f, H/2f-55);
         game.batch.end();
     }
@@ -750,5 +1412,12 @@ public class GameScreen implements Screen {
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}
-    @Override public void dispose() { font.dispose(); smallFont.dispose(); }
+    @Override public void dispose() {
+        font.dispose();
+        smallFont.dispose();
+        if (floorTiles   != null) for (Texture t : floorTiles)   if (t != null) t.dispose();
+        if (wallTiles    != null) for (Texture t : wallTiles)     if (t != null) t.dispose();
+        if (playerSprites != null) for (Texture t : playerSprites) if (t != null) t.dispose();
+        if (enemySprites  != null) for (Texture t : enemySprites)  if (t != null) t.dispose();
+    }
 }

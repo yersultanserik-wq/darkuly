@@ -12,27 +12,27 @@ public class ArmorItem {
     // Tier names per slot
     private static final String[][] HELMET_NAMES = {
         {}, // 0 unused
-        {"Кожаный шлем"},
-        {"Кольчужный шлем"},
-        {"Стальной шлем"},
-        {"Рунический шлем"},
-        {"Шлем Тьмы"}
+        {"Leather Helm"},
+        {"Chainmail Helm"},
+        {"Steel Helm"},
+        {"Runic Helm"},
+        {"Helm of Darkness"}
     };
     private static final String[][] CHEST_NAMES = {
         {},
-        {"Кожаный нагрудник"},
-        {"Кольчужный нагрудник"},
-        {"Стальной нагрудник"},
-        {"Рунический нагрудник"},
-        {"Нагрудник Тьмы"}
+        {"Leather Chest"},
+        {"Chainmail Chest"},
+        {"Steel Chest"},
+        {"Runic Chest"},
+        {"Chest of Darkness"}
     };
     private static final String[][] LEGS_NAMES = {
         {},
-        {"Кожаные поножи"},
-        {"Кольчужные поножи"},
-        {"Стальные поножи"},
-        {"Рунические поножи"},
-        {"Поножи Тьмы"}
+        {"Leather Legs"},
+        {"Chainmail Legs"},
+        {"Steel Legs"},
+        {"Runic Legs"},
+        {"Legs of Darkness"}
     };
 
     public ArmorItem(ArmorSlot slot, int tier) {

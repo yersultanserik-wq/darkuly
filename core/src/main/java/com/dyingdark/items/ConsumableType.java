@@ -1,9 +1,9 @@
 package com.dyingdark.items;
 
 public enum ConsumableType {
-    HEAL_POTION  ("HealPotion",  "Зелье лечения",  60,  35, "Восстанавливает 60 HP."),
-    MANA_POTION  ("ManaPotion",  "Зелье маны",     0,   40, "Восстанавливает атаку заклинания."),
-    SHIELD_SCROLL("ShieldScroll","Свиток щита",    0,   55, "Временный щит на 5 секунд.");
+    HEAL_POTION  ("HealPotion",  "Heal Potion",  60,  35, "Restores 60 HP."),
+    MANA_POTION  ("ManaPotion",  "Mana Potion",     0,   40, "Restores spell energy."),
+    SHIELD_SCROLL("ShieldScroll","Shield Scroll",    0,   55, "Temporary shield for 5 seconds.");
 
     public final String id;
     public final String displayName;
