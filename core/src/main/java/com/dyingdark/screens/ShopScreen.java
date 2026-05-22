@@ -8,6 +8,8 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.math.Matrix4;
 import com.dyingdark.DyingDarkGame;
 import com.dyingdark.entities.Player;
 import com.dyingdark.items.*;
@@ -17,7 +19,7 @@ import java.util.List;
 
 public class ShopScreen implements Screen {
 
-    private static final float W = 960, H = 640;
+    private static final float W = 640, H = 426;
     private static final Color GOLD_COLOR  = new Color(1f, 0.85f, 0.2f, 1f);
     private static final Color GREEN_COLOR = new Color(0.2f, 0.9f, 0.4f, 1f);
     private static final Color RED_COLOR   = new Color(0.9f, 0.2f, 0.2f, 1f);
@@ -37,6 +39,7 @@ public class ShopScreen implements Screen {
 
     private final BitmapFont titleFont, font, smallFont;
     private final GlyphLayout layout = new GlyphLayout();
+    private final Matrix4 shopMatrix = new Matrix4();
 
     public ShopScreen(DyingDarkGame game, Player player, int[] goldRef, Runnable onExit) {
         this.game   = game;
@@ -44,9 +47,11 @@ public class ShopScreen implements Screen {
         this.gold   = goldRef[0];
         this.onExit = onExit;
 
-        titleFont = new BitmapFont(); titleFont.getData().setScale(3.2f);
-        font      = new BitmapFont(); font.getData().setScale(1.8f);
-        smallFont = new BitmapFont(); smallFont.getData().setScale(1.3f);
+        titleFont = new BitmapFont(); titleFont.getData().setScale(1.8f);
+        font      = new BitmapFont(); font.getData().setScale(1.1f);
+        smallFont = new BitmapFont(); smallFont.getData().setScale(0.85f);
+
+        shopMatrix.setToOrtho2D(0, 0, W, H);
 
         buildEntries(goldRef);
     }
@@ -123,6 +128,9 @@ public class ShopScreen implements Screen {
         if (statusTimer > 0) statusTimer -= delta;
         Gdx.gl.glClearColor(0.03f, 0.03f, 0.06f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        // Применяем фиксированную матрицу 640×426
+        game.batch.setProjectionMatrix(shopMatrix);
+        game.shapes.setProjectionMatrix(shopMatrix);
         handleInput();
         drawBg();
         drawTitle();
@@ -161,7 +169,7 @@ public class ShopScreen implements Screen {
     }
 
     private void drawTitle() {
-        float bw = 380, bh = 52, bx = W/2f - bw/2, by = H - 65;
+        float bw = 240, bh = 36, bx = W/2f - bw/2, by = H - 44;
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
         game.shapes.setColor(0.12f, 0.09f, 0.03f, 1f);
         game.shapes.rect(bx, by, bw, bh);
@@ -182,12 +190,12 @@ public class ShopScreen implements Screen {
         game.batch.begin();
         titleFont.setColor(GOLD_COLOR);
         layout.setText(titleFont, "SHOP");
-        titleFont.draw(game.batch, "SHOP", W/2f - layout.width/2f, H - 18);
+        titleFont.draw(game.batch, "SHOP", W/2f - layout.width/2f, H - 10);
         game.batch.end();
 
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
         game.shapes.setColor(GOLD_COLOR.r, GOLD_COLOR.g, GOLD_COLOR.b, 0.5f);
-        game.shapes.rect(60, H - 70, W - 120, 2);
+        game.shapes.rect(8, H - 48, W - 16, 1);
         game.shapes.end();
     }
 
@@ -201,60 +209,60 @@ public class ShopScreen implements Screen {
     }
 
     private void drawGold() {
-        drawCoinIcon(W - 280, H - 34, 9);
+        drawCoinIcon(W - 90, H - 22, 7);
         game.batch.begin();
         font.setColor(GOLD_COLOR);
-        font.draw(game.batch, "  " + gold, W - 270, H - 22);
+        font.draw(game.batch, "  " + gold, W - 82, H - 14);
         game.batch.end();
     }
 
     private void drawItemList() {
-        int visCount = 14;
+        int visCount = 12;
         int start = Math.max(0, Math.min(cursor - visCount / 2, entries.size() - visCount));
-        float itemH = 36;
-        float listY = H - 80;
+        float itemH = 26;
+        float listY = H - 55;
 
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
         game.shapes.setColor(0.04f, 0.04f, 0.07f, 1f);
-        game.shapes.rect(40, listY - visCount * itemH, 500, visCount * itemH);
+        game.shapes.rect(8, listY - visCount * itemH, 340, visCount * itemH);
         game.shapes.end();
 
         game.shapes.begin(ShapeRenderer.ShapeType.Line);
         game.shapes.setColor(0.25f, 0.2f, 0.08f, 1f);
-        game.shapes.rect(40, listY - visCount * itemH, 500, visCount * itemH);
+        game.shapes.rect(8, listY - visCount * itemH, 340, visCount * itemH);
         game.shapes.end();
 
         for (int i = start; i < Math.min(start + visCount, entries.size()); i++) {
             ShopEntry e = entries.get(i);
             boolean sel = i == cursor;
             float iy = listY - (i - start + 1) * itemH + itemH * 0.35f;
-            float iconX = 50, iconY = iy + 6;
+            float iconX = 14, iconY = iy + 4;
 
             if (sel) {
                 float glow = 0.5f + 0.5f * (float)Math.sin(time * 4);
                 game.shapes.begin(ShapeRenderer.ShapeType.Filled);
                 game.shapes.setColor(GOLD_COLOR.r * 0.15f, GOLD_COLOR.g * 0.15f, GOLD_COLOR.b * 0.05f, 1f);
-                game.shapes.rect(41, iy - 4, 498, itemH - 2);
+                game.shapes.rect(9, iy - 3, 338, itemH - 2);
                 game.shapes.end();
 
                 game.shapes.begin(ShapeRenderer.ShapeType.Line);
                 game.shapes.setColor(GOLD_COLOR.r * glow, GOLD_COLOR.g * glow, GOLD_COLOR.b * glow, 1f);
-                game.shapes.rect(41, iy - 4, 498, itemH - 2);
+                game.shapes.rect(9, iy - 3, 338, itemH - 2);
                 game.shapes.end();
             }
 
             // Draw item icon — always in its own begin/end pair
-            drawItemIcon(e.id(), iconX, iconY + 4, sel ? 1f : 0.6f);
+            drawItemIcon(e.id(), iconX, iconY + 2, sel ? 1f : 0.6f);
 
             boolean canAfford = gold >= e.price();
             game.batch.begin();
             font.setColor(sel ? 1f : 0.7f, sel ? 0.95f : 0.7f, sel ? 0.4f : 0.5f, 1f);
-            font.draw(game.batch, e.name(), iconX + 22, iy + 22);
+            font.draw(game.batch, e.name(), iconX + 18, iy + 16);
             Color pc = canAfford ? GREEN_COLOR : RED_COLOR;
             font.setColor(pc.r, pc.g, pc.b, sel ? 1f : 0.7f);
             String priceStr = e.price() + "g";
             layout.setText(font, priceStr);
-            font.draw(game.batch, priceStr, 528 - layout.width, iy + 22);
+            font.draw(game.batch, priceStr, 340 - layout.width, iy + 16);
             game.batch.end();
         }
     }
@@ -382,7 +390,7 @@ public class ShopScreen implements Screen {
     private void drawPreview() {
         if (entries.isEmpty()) return;
         ShopEntry e = entries.get(cursor);
-        float px = 565, py = H - 80, pw = 355, ph = 360;
+        float px = 360, py = H - 55, pw = 272, ph = 310;
 
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
         game.shapes.setColor(0.05f, 0.05f, 0.09f, 1f);
