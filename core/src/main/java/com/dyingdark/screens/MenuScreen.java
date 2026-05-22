@@ -5,17 +5,23 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.dyingdark.DyingDarkGame;
 
 public class MenuScreen implements Screen {
+
+    private static final float VW = 640, VH = 426;
 
     private final DyingDarkGame game;
     private final BitmapFont font;
     private final BitmapFont smallFont;
     private final GlyphLayout layout;
+    private final OrthographicCamera camera;
+    private final FitViewport viewport;
     private float time = 0;
 
     public MenuScreen(DyingDarkGame game) {
@@ -25,6 +31,11 @@ public class MenuScreen implements Screen {
         this.layout    = new GlyphLayout();
         font.getData().setScale(4f);
         smallFont.getData().setScale(1.8f);
+
+        camera = new OrthographicCamera();
+        viewport = new FitViewport(VW, VH, camera);
+        camera.setToOrtho(false, VW, VH);
+        camera.update();
     }
 
     @Override
@@ -34,8 +45,11 @@ public class MenuScreen implements Screen {
         Gdx.gl.glClearColor(0.04f, 0.04f, 0.08f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        float W = Gdx.graphics.getWidth();
-        float H = Gdx.graphics.getHeight();
+        // Always reset projection matrix — batch may have stale camera from GameScreen
+        game.batch.setProjectionMatrix(camera.combined);
+        game.shapes.setProjectionMatrix(camera.combined);
+
+        float W = VW, H = VH;
 
         // Draw decorative background grid
         game.shapes.begin(ShapeRenderer.ShapeType.Line);
@@ -82,13 +96,14 @@ public class MenuScreen implements Screen {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) ||
             Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            game.setScreen(new RaceSelectScreen(game));
+            Screen next = new RaceSelectScreen(game);
             dispose();
+            game.setScreen(next);
         }
     }
 
     @Override public void show() {}
-    @Override public void resize(int w, int h) {}
+    @Override public void resize(int w, int h) { viewport.update(w, h, true); }
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}

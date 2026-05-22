@@ -81,12 +81,28 @@ public class GameScreen implements Screen {
     private static final float PORTAL_X = W / 2f, PORTAL_Y = H / 2f - 20;
     private static final float PORTAL_RADIUS = 28f;
 
+    // ── Map type ───────────────────────────────────────────
+    private enum MapType { DUNGEON, OVERWORLD }
+    private MapType mapType = MapType.DUNGEON;
+
     // ── Kenney Tile Textures ───────────────────────────────
     // Player tiles by race: Human=98, Elf=112, Orc=109, Necro=84, Dwarf=87
     // Enemy tiles: Ghost=121, Bat=120, Mage=111, Spider=122, Boss=108
     private Texture[] floorTiles;
     private Texture[] wallTiles;
     private boolean tilesLoaded = false;
+
+    // ── Tiny Swords Assets ────────────────────────────────
+    // Ground tilemap slices (Tilemap_Flat 640x256, 10x4 grid of 64x64)
+    private Texture[] tsGroundTiles;  // grass tiles cut from Tilemap_Flat
+    private Texture   tsTreeSpritesheet; // Trees/Tree.png 768x576 (6x6 frames of 128x96)
+    private Texture   tsBannerHorizontal;
+    private Texture   tsCarvedPanel;
+    private Texture   tsRibbonRed, tsRibbonBlue, tsRibbonYellow;
+    private Texture[] tsIcons;         // icons 01-10
+    private boolean   tsLoaded = false;
+    // Pre-cut grass tile regions (from Tilemap_Flat)
+    private TextureRegion[] tsGrassRegions;
 
     // Character sprites (Kenney tiles)
     private Texture[] playerSprites; // indexed by race ordinal
@@ -166,6 +182,9 @@ public class GameScreen implements Screen {
         events.subscribe(EventType.PLAYER_DIED,       (t, d) -> gameOver = true);
 
         loadTiles();
+        loadTinySwords();
+        // Determine map type based on depth (overworld every other floor)
+        mapType = (depth % 2 == 1) ? MapType.OVERWORLD : MapType.DUNGEON;
         // Proto (Human) animated spritesheet loading
         try {
             String[] idlePaths = {"assets/proto_idle_down.png","assets/proto_idle_right.png","assets/proto_idle_up.png"};
@@ -238,6 +257,52 @@ public class GameScreen implements Screen {
         } catch (Exception ex) {
             spritesLoaded = false;
             Gdx.app.log("GameScreen", "Sprite init failed: " + ex.getMessage());
+        }
+    }
+
+    private void loadTinySwords() {
+        try {
+            // Tilemap_Flat: 640×256, 10 columns × 4 rows of 64×64 tiles
+            Texture flatMap = new Texture(Gdx.files.internal("assets/tiny_swords/ground_r0_c0.png"));
+            flatMap.dispose(); // just a probe; load the full atlas instead
+            // Load full Tilemap_Flat as atlas for TextureRegion slicing
+            Texture tilemap = new Texture(Gdx.files.internal("assets/tiny_swords/ground_r0_c0.png"));
+            // Pre-load individual ground PNGs (already sliced by Python)
+            tsGroundTiles = new Texture[8];
+            // Row 0 col 0-7: grass variants
+            int[][] grassCoords = {{0,0},{0,1},{0,2},{0,3},{0,4},{0,5},{1,0},{1,1}};
+            for (int i = 0; i < grassCoords.length; i++) {
+                int r = grassCoords[i][0], c = grassCoords[i][1];
+                String path = "assets/tiny_swords/ground_r" + r + "_c" + c + ".png";
+                if (Gdx.files.internal(path).exists())
+                    tsGroundTiles[i] = new Texture(Gdx.files.internal(path));
+            }
+            tilemap.dispose();
+
+            // UI assets
+            if (Gdx.files.internal("assets/tiny_swords/banner_horizontal.png").exists())
+                tsBannerHorizontal = new Texture(Gdx.files.internal("assets/tiny_swords/banner_horizontal.png"));
+            if (Gdx.files.internal("assets/tiny_swords/carved_panel.png").exists())
+                tsCarvedPanel = new Texture(Gdx.files.internal("assets/tiny_swords/carved_panel.png"));
+            if (Gdx.files.internal("assets/tiny_swords/ribbon_red.png").exists())
+                tsRibbonRed = new Texture(Gdx.files.internal("assets/tiny_swords/ribbon_red.png"));
+            if (Gdx.files.internal("assets/tiny_swords/ribbon_blue.png").exists())
+                tsRibbonBlue = new Texture(Gdx.files.internal("assets/tiny_swords/ribbon_blue.png"));
+            if (Gdx.files.internal("assets/tiny_swords/ribbon_yellow.png").exists())
+                tsRibbonYellow = new Texture(Gdx.files.internal("assets/tiny_swords/ribbon_yellow.png"));
+
+            // Icons 01-10
+            tsIcons = new Texture[10];
+            for (int i = 1; i <= 10; i++) {
+                String path = "assets/tiny_swords/icon_" + String.format("%02d", i) + ".png";
+                if (Gdx.files.internal(path).exists())
+                    tsIcons[i-1] = new Texture(Gdx.files.internal(path));
+            }
+
+            tsLoaded = true;
+        } catch (Exception ex) {
+            tsLoaded = false;
+            Gdx.app.log("GameScreen", "TinySwords load failed: " + ex.getMessage());
         }
     }
 
@@ -355,10 +420,11 @@ public class GameScreen implements Screen {
                         return;
                     }
                     rooms = new DungeonGenerator().generate(depth, config.getDifficultyMultiplier());
+                    mapType = (depth % 2 == 1) ? MapType.OVERWORLD : MapType.DUNGEON;
                     currentRoomIdx = 0;
                     player.setX(W / 2f);
                     player.setY(H / 2f);
-                    log("Floor " + (depth + 1) + " — deeper into the dark...");
+                    log("Floor " + (depth + 1) + (mapType == MapType.OVERWORLD ? " — overworld!" : " — deeper into the dark..."));
                     if (depth % 2 == 0) openShop();
                 } else {
                     // Reset player to spawn position of new room
@@ -483,7 +549,11 @@ public class GameScreen implements Screen {
 
     // ── DRAW ───────────────────────────────────────────────
     private void draw() {
-        Gdx.gl.glClearColor(0.04f, 0.04f, 0.08f, 1f);
+        if (mapType == MapType.OVERWORLD) {
+            Gdx.gl.glClearColor(0.48f, 0.72f, 0.35f, 1f); // bright grass green sky
+        } else {
+            Gdx.gl.glClearColor(0.04f, 0.04f, 0.08f, 1f);
+        }
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         drawFloor();
@@ -501,11 +571,39 @@ public class GameScreen implements Screen {
 
     // ── FLOOR: use Kenney tiles if loaded, else fallback ──
     private void drawFloor() {
-        if (tilesLoaded && floorTiles[0] != null) {
+        if (mapType == MapType.OVERWORLD && tsLoaded) {
+            drawOverworldFloor();
+        } else if (tilesLoaded && floorTiles[0] != null) {
             drawFloorWithTiles();
         } else {
             drawFloorFallback();
         }
+    }
+
+    private void drawOverworldFloor() {
+        float floorY = HUD_H;
+        // Draw grass tiles using Tiny Swords ground tiles
+        game.batch.begin();
+        game.batch.setColor(1f, 1f, 1f, 1f);
+        int cols = (int)(W / TILE);
+        int rows = (int)((H - floorY) / TILE) + 1;
+        for (int tx = 0; tx < cols; tx++) {
+            for (int ty = 0; ty < rows; ty++) {
+                // Deterministic tile selection from grass variants
+                int hash = ((tx * 7 + ty * 13) ^ (tx * ty)) & 7;
+                Texture t = (tsGroundTiles != null && hash < tsGroundTiles.length) ? tsGroundTiles[hash] : null;
+                if (t != null) {
+                    game.batch.draw(t, tx * TILE, floorY + ty * TILE, TILE, TILE);
+                }
+            }
+        }
+        game.batch.end();
+
+        // Subtle day-sky tint overlay to give outdoor feel
+        game.shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        game.shapes.setColor(0.6f, 0.85f, 0.5f, 0.05f);
+        game.shapes.rect(0, floorY, W, H - floorY);
+        game.shapes.end();
     }
 
     private void drawFloorWithTiles() {
@@ -651,6 +749,11 @@ public class GameScreen implements Screen {
         Color pc = RACE_NEON[race.ordinal()];
         float flicker = 0.55f + 0.15f*(float)Math.sin(time * 1.8f);
 
+        if (mapType == MapType.OVERWORLD) {
+            drawOverworldBorder(pc, flicker);
+            return;
+        }
+
         // === WALL TILES — use Kenney assets if loaded ===
         if (tilesLoaded && wallTiles[0] != null) {
             game.batch.begin();
@@ -754,6 +857,64 @@ public class GameScreen implements Screen {
 
         // === WALL RUNE CARVINGS ===
         drawWallRunes(pc, flicker);
+    }
+
+    /** Overworld map border — treeline fence using Tiny Swords ground tiles as edge markers */
+    private void drawOverworldBorder(Color pc, float flicker) {
+        // Draw a subtle grassy border / fence effect — no stone walls
+        // Bottom border (just above HUD)
+        game.shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        game.shapes.setColor(0.25f, 0.55f, 0.18f, 1f);
+        game.shapes.rect(0, HUD_H, W, TILE); // green border strip bottom
+        game.shapes.setColor(0.22f, 0.48f, 0.14f, 1f);
+        game.shapes.rect(0, H - TILE, W, TILE); // top
+        game.shapes.rect(0, HUD_H, TILE, H - HUD_H); // left
+        game.shapes.rect(W - TILE, HUD_H, TILE, H - HUD_H); // right
+        game.shapes.end();
+
+        // Draw "tree trunk" columns at regular intervals along borders
+        game.shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        int treeSpacing = (int)(TILE * 3);
+        // Top and bottom tree lines
+        for (int tx = 0; tx < (int)(W / treeSpacing); tx++) {
+            float bx = tx * treeSpacing + TILE / 2f;
+            drawTree(bx, H - TILE * 0.5f, flicker);
+            drawTree(bx, HUD_H + TILE * 0.5f, flicker);
+        }
+        // Left and right tree lines
+        for (int ty = 1; ty < (int)((H - HUD_H) / treeSpacing); ty++) {
+            float by = HUD_H + ty * treeSpacing;
+            drawTree(TILE * 0.5f, by, flicker);
+            drawTree(W - TILE * 0.5f, by, flicker);
+        }
+        game.shapes.end();
+
+        // Daylight ambient overlay (top sky tint, bottom grass shadow)
+        game.shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        game.shapes.setColor(0.5f, 0.8f, 1.0f, 0.04f);
+        game.shapes.rect(TILE, H - TILE * 3, W - 2 * TILE, TILE * 2);
+        game.shapes.end();
+
+        // Inner boundary line (soft green)
+        game.shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(0.3f * flicker, 0.7f * flicker, 0.2f * flicker, 0.8f);
+        game.shapes.rect(TILE, HUD_H + TILE, W - 2 * TILE, H - HUD_H - 2 * TILE);
+        game.shapes.end();
+    }
+
+    /** Simple pixel-art tree: trunk + round canopy */
+    private void drawTree(float cx, float cy, float flicker) {
+        // Canopy (green circle)
+        float canopyR = TILE * 0.55f;
+        float sway = (float)Math.sin(time * 1.5f + cx * 0.05f) * 1.5f;
+        game.shapes.setColor(0.15f + 0.05f * flicker, 0.5f + 0.1f * flicker, 0.08f, 1f);
+        game.shapes.circle(cx + sway, cy + canopyR * 0.6f, canopyR, 12);
+        // Highlight
+        game.shapes.setColor(0.25f, 0.65f, 0.12f, 0.6f);
+        game.shapes.circle(cx - canopyR * 0.2f + sway, cy + canopyR * 0.9f, canopyR * 0.5f, 8);
+        // Trunk
+        game.shapes.setColor(0.38f, 0.22f, 0.08f, 1f);
+        game.shapes.rect(cx - 3, cy - TILE * 0.1f, 6, TILE * 0.5f);
     }
 
     private void drawPillar(float px, float py, Color pc, float flicker) {
@@ -1387,17 +1548,34 @@ public class GameScreen implements Screen {
         Color nc = RACE_NEON[race.ordinal()];
         float hudY = 0;
 
-        // HUD background
+        // ── HUD background: stone parchment feel ──────────────
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
-        game.shapes.setColor(0.04f, 0.04f, 0.07f, 1f);
+        // Base dark background
+        game.shapes.setColor(0.10f, 0.08f, 0.05f, 1f);
         game.shapes.rect(0, hudY, W, HUD_H);
-        game.shapes.end();
-        game.shapes.begin(ShapeRenderer.ShapeType.Line);
-        game.shapes.setColor(nc.r*0.5f, nc.g*0.5f, nc.b*0.5f, 1f);
-        game.shapes.rect(0, HUD_H-1, W, 1);
+        // Warm stone gradient: lighter band near top
+        game.shapes.setColor(0.16f, 0.12f, 0.08f, 1f);
+        game.shapes.rect(0, HUD_H - 12f, W, 12f);
         game.shapes.end();
 
-        // HP bar
+        // Top border line — golden parchment color
+        game.shapes.begin(ShapeRenderer.ShapeType.Line);
+        game.shapes.setColor(0.75f, 0.55f, 0.18f, 1f);
+        game.shapes.line(0, HUD_H - 1, W, HUD_H - 1);
+        game.shapes.setColor(0.45f, 0.32f, 0.10f, 0.6f);
+        game.shapes.line(0, HUD_H - 3, W, HUD_H - 3);
+        game.shapes.end();
+
+        // ── Tiny Swords ribbon as HP label decoration ─────────
+        if (tsLoaded && tsRibbonRed != null) {
+            game.batch.begin();
+            // Draw ribbon behind HP bar, scaled to fit (ribbon is 192x64, show as 80x20)
+            game.batch.setColor(1f, 1f, 1f, 0.9f);
+            game.batch.draw(tsRibbonRed, 4, 50, 80, 20);
+            game.batch.end();
+        }
+
+        // ── HP bar ────────────────────────────────────────────
         float hpW = 200;
         game.shapes.begin(ShapeRenderer.ShapeType.Filled);
         game.shapes.setColor(0.2f, 0f, 0f, 1f);
@@ -1424,21 +1602,41 @@ public class GameScreen implements Screen {
             armorX += 28;
         }
 
-        // Consumable count icons
+        // ── Consumable icons: use Tiny Swords icons if loaded ──
+        game.shapes.end();
+        game.batch.begin();
         int cx = 220;
         for (int i = 0; i < healPotions; i++) {
-            game.shapes.setColor(0.2f, 0.9f, 0.3f, 1f);
-            game.shapes.circle(cx + i*18, 30, 6, 8);
+            if (tsLoaded && tsIcons != null && tsIcons[0] != null) {
+                game.batch.setColor(0.3f, 1f, 0.4f, 1f);
+                game.batch.draw(tsIcons[0], cx + i*18 - 8, 20, 16, 16);
+            }
         }
-        cx += healPotions*18 + 10;
+        cx += Math.max(1, healPotions)*18 + 4;
         for (int i = 0; i < shieldScrolls; i++) {
-            game.shapes.setColor(0.2f, 0.4f, 1f, 1f);
-            game.shapes.circle(cx + i*18, 30, 6, 8);
+            if (tsLoaded && tsIcons != null && tsIcons[2] != null) {
+                game.batch.setColor(0.4f, 0.7f, 1f, 1f);
+                game.batch.draw(tsIcons[2], cx + i*18 - 8, 20, 16, 16);
+            }
         }
-        cx += shieldScrolls*18 + 10;
+        cx += Math.max(1, shieldScrolls)*18 + 4;
         for (int i = 0; i < manaPotions; i++) {
-            game.shapes.setColor(0.5f, 0.3f, 1f, 1f);
-            game.shapes.circle(cx + i*18, 30, 6, 8);
+            if (tsLoaded && tsIcons != null && tsIcons[3] != null) {
+                game.batch.setColor(0.7f, 0.4f, 1f, 1f);
+                game.batch.draw(tsIcons[3], cx + i*18 - 8, 20, 16, 16);
+            }
+        }
+        game.batch.setColor(Color.WHITE);
+        game.batch.end();
+        game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        // Fallback circles if tsIcons not loaded
+        if (!tsLoaded || tsIcons == null) {
+            cx = 220;
+            for (int i = 0; i < healPotions; i++) { game.shapes.setColor(0.2f, 0.9f, 0.3f, 1f); game.shapes.circle(cx + i*18, 30, 6, 8); }
+            cx += healPotions*18 + 10;
+            for (int i = 0; i < shieldScrolls; i++) { game.shapes.setColor(0.2f, 0.4f, 1f, 1f); game.shapes.circle(cx + i*18, 30, 6, 8); }
+            cx += shieldScrolls*18 + 10;
+            for (int i = 0; i < manaPotions; i++) { game.shapes.setColor(0.5f, 0.3f, 1f, 1f); game.shapes.circle(cx + i*18, 30, 6, 8); }
         }
 
         // Room progress
@@ -1454,24 +1652,38 @@ public class GameScreen implements Screen {
         // ── Иконка магазина (сундук) — правый нижний угол HUD ──
         float shopIconX = W - 58f, shopIconY = 8f;
         float pulse2 = 0.7f + 0.3f*(float)Math.sin(time * 2.5f);
-        // Основание сундука
-        game.shapes.setColor(0.55f * pulse2, 0.35f * pulse2, 0.1f, 1f);
-        game.shapes.rect(shopIconX, shopIconY + 4, 22, 12);
-        // Крышка
-        game.shapes.setColor(0.65f * pulse2, 0.45f * pulse2, 0.15f, 1f);
-        game.shapes.rect(shopIconX, shopIconY + 15, 22, 6);
-        // Замок (жёлтый)
-        game.shapes.setColor(1f * pulse2, 0.85f * pulse2, 0.2f, 1f);
-        game.shapes.circle(shopIconX + 11, shopIconY + 10, 3f, 8);
+
+        if (tsLoaded && tsIcons != null && tsIcons[5] != null) {
+            // Use Tiny Swords icon (icon_06 = coins/gold) as shop icon
+            game.shapes.end();
+            game.batch.begin();
+            game.batch.setColor(pulse2, pulse2, pulse2 * 0.8f, 1f);
+            game.batch.draw(tsIcons[5], shopIconX - 2, shopIconY, 30, 30);
+            game.batch.end();
+            game.shapes.begin(ShapeRenderer.ShapeType.Filled);
+        } else {
+            // Fallback: draw procedural chest
+            // Основание сундука
+            game.shapes.setColor(0.55f * pulse2, 0.35f * pulse2, 0.1f, 1f);
+            game.shapes.rect(shopIconX, shopIconY + 4, 22, 12);
+            // Крышка
+            game.shapes.setColor(0.65f * pulse2, 0.45f * pulse2, 0.15f, 1f);
+            game.shapes.rect(shopIconX, shopIconY + 15, 22, 6);
+            // Замок (жёлтый)
+            game.shapes.setColor(1f * pulse2, 0.85f * pulse2, 0.2f, 1f);
+            game.shapes.circle(shopIconX + 11, shopIconY + 10, 3f, 8);
+        }
 
         game.shapes.end();
 
-        // Контур сундука (Line поверх)
-        game.shapes.begin(ShapeRenderer.ShapeType.Line);
-        game.shapes.setColor(1f * pulse2, 0.85f * pulse2, 0.2f, 1f);
-        game.shapes.rect(shopIconX, shopIconY + 4, 22, 12);
-        game.shapes.rect(shopIconX, shopIconY + 15, 22, 6);
-        game.shapes.end();
+        // Контур сундука (Line поверх) — only for fallback mode
+        if (!(tsLoaded && tsIcons != null && tsIcons[5] != null)) {
+            game.shapes.begin(ShapeRenderer.ShapeType.Line);
+            game.shapes.setColor(1f * pulse2, 0.85f * pulse2, 0.2f, 1f);
+            game.shapes.rect(shopIconX, shopIconY + 4, 22, 12);
+            game.shapes.rect(shopIconX, shopIconY + 15, 22, 6);
+            game.shapes.end();
+        }
 
         // HUD text
         game.batch.begin();
@@ -1587,6 +1799,10 @@ public class GameScreen implements Screen {
         Gdx.gl.glClearColor(0.02f, 0.06f, 0.02f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        // Reset projection to the fixed HUD matrix so coordinates are screen-space
+        game.batch.setProjectionMatrix(hudMatrix);
+        game.shapes.setProjectionMatrix(hudMatrix);
+
         float glow = 0.7f + 0.3f*(float)Math.sin(time * 4);
 
         // Golden radial glow
@@ -1622,18 +1838,24 @@ public class GameScreen implements Screen {
 
     private void handleVictoryInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-            game.setScreen(new RaceSelectScreen(game));
+            Screen next = new RaceSelectScreen(game);
             dispose();
+            game.setScreen(next);
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-            game.setScreen(new MenuScreen(game));
+            Screen next = new MenuScreen(game);
             dispose();
+            game.setScreen(next);
         }
     }
 
     private void renderGameOver() {
         Gdx.gl.glClearColor(0.02f, 0.01f, 0.03f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        // Reset projection to fixed HUD matrix so screen-space coords are correct
+        game.batch.setProjectionMatrix(hudMatrix);
+        game.shapes.setProjectionMatrix(hudMatrix);
 
         // Neon glitch effect
         float t = (float)Math.sin(time*8) * 3;
@@ -1660,12 +1882,14 @@ public class GameScreen implements Screen {
 
     private void handleGameOverInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-            game.setScreen(new RaceSelectScreen(game));
+            Screen next = new RaceSelectScreen(game);
             dispose();
+            game.setScreen(next);
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-            game.setScreen(new MenuScreen(game));
+            Screen next = new MenuScreen(game);
             dispose();
+            game.setScreen(next);
         }
     }
 
@@ -1698,5 +1922,13 @@ public class GameScreen implements Screen {
         if (protoIdleSheets != null) for (Texture t : protoIdleSheets) if (t != null) t.dispose();
         if (protoWalkSheets != null) for (Texture t : protoWalkSheets) if (t != null) t.dispose();
         if (protoHurtSheets != null) for (Texture t : protoHurtSheets) if (t != null) t.dispose();
+        // Tiny Swords assets
+        if (tsGroundTiles != null) for (Texture t : tsGroundTiles) if (t != null) t.dispose();
+        if (tsBannerHorizontal != null) tsBannerHorizontal.dispose();
+        if (tsCarvedPanel != null) tsCarvedPanel.dispose();
+        if (tsRibbonRed != null) tsRibbonRed.dispose();
+        if (tsRibbonBlue != null) tsRibbonBlue.dispose();
+        if (tsRibbonYellow != null) tsRibbonYellow.dispose();
+        if (tsIcons != null) for (Texture t : tsIcons) if (t != null) t.dispose();
     }
 }

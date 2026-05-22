@@ -48,6 +48,11 @@ public class RaceSelectScreen implements Screen {
         Gdx.gl.glClearColor(0.03f, 0.03f, 0.06f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        // Reset projection matrix — may be stale from GameScreen camera
+        com.badlogic.gdx.math.Matrix4 ident = new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0, W, H);
+        game.batch.setProjectionMatrix(ident);
+        game.shapes.setProjectionMatrix(ident);
+
         handleInput();
         drawBackground();
         drawTitle();
@@ -62,12 +67,14 @@ public class RaceSelectScreen implements Screen {
         if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT) || Gdx.input.isKeyJustPressed(Input.Keys.D))
             selected = (selected + 1) % races.length;
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            game.setScreen(new GameScreen(game, races[selected]));
+            Screen next = new GameScreen(game, races[selected]);
             dispose();
+            game.setScreen(next);
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-            game.setScreen(new MenuScreen(game));
+            Screen next = new MenuScreen(game);
             dispose();
+            game.setScreen(next);
         }
     }
 
